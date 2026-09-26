@@ -125,7 +125,7 @@ if question:
                     results = st.session_state.retriever.search(question, top_k=6)
                 except TypeError:
                     results = st.session_state.retriever.search(question)
-               try:
+                try:
                   assistant = GeminiAssistant()
                   answer = assistant.answer(
                       question,
