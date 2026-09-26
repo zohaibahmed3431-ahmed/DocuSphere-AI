@@ -20,6 +20,7 @@ st.set_page_config(
 )
 
 st.title("📚 DocuSphere AI")
+
 st.caption(
     "Intelligent document assistant with RAG, citations, "
     "code understanding, and CSV analytics."
@@ -27,10 +28,30 @@ st.caption(
 
 
 SUPPORTED = [
-    "pdf", "docx", "txt", "md", "pptx", "xlsx", "csv",
-    "py", "java", "cpp", "c", "h", "hpp", "js", "ts",
-    "html", "css", "sql", "json", "xml",
-    "jpg", "jpeg", "png", "webp"
+    "pdf",
+    "docx",
+    "txt",
+    "md",
+    "pptx",
+    "xlsx",
+    "csv",
+    "py",
+    "java",
+    "cpp",
+    "c",
+    "h",
+    "hpp",
+    "js",
+    "ts",
+    "html",
+    "css",
+    "sql",
+    "json",
+    "xml",
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
 ]
 
 
@@ -62,12 +83,13 @@ if "chat" not in st.session_state:
 # ============================================================
 
 with st.sidebar:
+
     st.header("Documents")
 
     uploads = st.file_uploader(
         "Upload files",
         type=SUPPORTED,
-        accept_multiple_files=True
+        accept_multiple_files=True,
     )
 
     st.divider()
@@ -83,16 +105,19 @@ with st.sidebar:
 # ============================================================
 
 def signature(files):
+
     parts = []
 
     for f in sorted(
         files or [],
         key=lambda x: x.name.lower()
     ):
+
         b = f.getvalue()
 
         parts.append(
-            f"{f.name}:{len(b)}:{hashlib.sha256(b).hexdigest()}"
+            f"{f.name}:{len(b)}:"
+            f"{hashlib.sha256(b).hexdigest()}"
         )
 
     if not parts:
@@ -122,70 +147,93 @@ if uploads:
 
             for f in uploads:
 
-                # --------------------------------------------
-                # Normal document ingestion
-                # --------------------------------------------
+                # ------------------------------------------------
+                # DOCUMENT INGESTION
+                # ------------------------------------------------
 
                 try:
+
                     extracted_records = ingest_uploaded_file(f)
-                    records.extend(extracted_records)
+
+                    records.extend(
+                        extracted_records
+                    )
 
                 except Exception as exc:
+
                     st.warning(
                         f"Could not process {f.name}: {exc}"
                     )
 
-                # --------------------------------------------
-                # CSV dataframe for exact analytics
-                # --------------------------------------------
+
+                # ------------------------------------------------
+                # CSV DATAFRAME
+                # ------------------------------------------------
 
                 if f.name.lower().endswith(".csv"):
 
                     try:
+
                         csv_frames[f.name] = pd.read_csv(
-                            io.BytesIO(f.getvalue())
+                            io.BytesIO(
+                                f.getvalue()
+                            )
                         )
 
                     except Exception as exc:
+
                         st.warning(
-                            f"Could not analyze CSV {f.name}: {exc}"
+                            f"Could not analyze CSV "
+                            f"{f.name}: {exc}"
                         )
 
-            # --------------------------------------------
-            # Save records
-            # --------------------------------------------
+
+            # ----------------------------------------------------
+            # SAVE PROCESSED DATA
+            # ----------------------------------------------------
 
             st.session_state.records = records
+
             st.session_state.chunks = records
+
             st.session_state.csv_frames = csv_frames
+
             st.session_state.files_signature = sig
 
-            # --------------------------------------------
-            # Build hybrid retrieval index
-            # --------------------------------------------
+
+            # ----------------------------------------------------
+            # BUILD RETRIEVAL INDEX
+            # ----------------------------------------------------
 
             try:
+
                 retriever = HybridRetriever()
+
                 retriever.build(records)
 
                 st.session_state.retriever = retriever
 
             except Exception as exc:
+
                 st.session_state.retriever = None
 
                 st.error(
                     f"Could not build search index: {exc}"
                 )
 
+
     st.success(
         f"Ready: {len(uploads)} file(s)"
     )
+
 
     if st.session_state.csv_frames:
 
         st.caption(
             "CSV files available for exact data analysis: "
-            + ", ".join(st.session_state.csv_frames.keys())
+            + ", ".join(
+                st.session_state.csv_frames.keys()
+            )
         )
 
 else:
@@ -202,10 +250,14 @@ else:
 for item in st.session_state.chat:
 
     with st.chat_message("user"):
-        st.markdown(item["q"])
+        st.markdown(
+            item["q"]
+        )
 
     with st.chat_message("assistant"):
-        st.markdown(item["a"])
+        st.markdown(
+            item["a"]
+        )
 
 
 # ============================================================
@@ -223,32 +275,43 @@ question = st.chat_input(
 
 if question:
 
-    # --------------------------------------------------------
+    # ========================================================
     # USER MESSAGE
-    # --------------------------------------------------------
+    # ========================================================
 
     with st.chat_message("user"):
         st.markdown(question)
 
 
     # ========================================================
-    # CSV ANALYTICS PATH
-    # Exact calculation using pandas
+    # CSV ANALYTICS
     # ========================================================
 
     csv_result = None
     csv_name = None
 
-    for name, frame in st.session_state.csv_frames.items():
 
-        result = analyze_csv(
-            frame,
-            question
-        )
+    for name, frame in (
+        st.session_state.csv_frames.items()
+    ):
+
+        try:
+
+            result = analyze_csv(
+                frame,
+                question
+            )
+
+        except Exception:
+
+            result = None
+
 
         if result is not None:
+
             csv_result = result
             csv_name = name
+
             break
 
 
@@ -261,20 +324,28 @@ if question:
         with st.chat_message("assistant"):
 
             st.markdown(
-                f"### 📊 CSV Analysis\n\n"
-                f"**{csv_result['value_column']} — "
-                f"{csv_result['period']}:** "
-                f"{format_total(csv_result['total'])}\n\n"
-                f"**Period:** "
-                f"{csv_result['start'].date()} → "
-                f"{csv_result['end'].date()}  \n"
-                f"**Records:** "
-                f"{csv_result['record_count']}  \n"
-                f"**Date column:** "
-                f"`{csv_result['date_column']}`  \n"
-                f"**File:** "
-                f"`{csv_name}`"
+                f"""
+### 📊 CSV Analysis
+
+**{csv_result['value_column']} — "
+{csv_result['period']}:**
+{format_total(csv_result['total'])}
+
+**Period:** {csv_result['start'].date()}
+→ {csv_result['end'].date()}
+
+**Records:** {csv_result['record_count']}
+
+**Date column:** `{csv_result['date_column']}`
+
+**File:** `{csv_name}`
+"""
             )
+
+
+            # ------------------------------------------------
+            # COMPLETE RECORDS
+            # ------------------------------------------------
 
             st.subheader(
                 "Complete matching records"
@@ -286,6 +357,11 @@ if question:
                 hide_index=True
             )
 
+
+            # ------------------------------------------------
+            # GRAPH
+            # ------------------------------------------------
+
             st.subheader(
                 "Daily trend"
             )
@@ -295,7 +371,10 @@ if question:
                 .set_index("Date")
             )
 
-            st.line_chart(chart_df)
+            st.line_chart(
+                chart_df
+            )
+
 
             st.caption(
                 "Numbers and chart are calculated directly "
@@ -304,7 +383,9 @@ if question:
             )
 
 
-        # Save chat history
+        # ----------------------------------------------------
+        # SAVE CSV CHAT
+        # ----------------------------------------------------
 
         st.session_state.chat.append(
             {
@@ -320,36 +401,44 @@ if question:
 
 
     # ========================================================
-    # DOCUMENT / AI PATH
+    # DOCUMENT / GEMINI PATH
     # ========================================================
 
     else:
 
         with st.chat_message("assistant"):
 
-            # --------------------------------------------
-            # No documents
-            # --------------------------------------------
+
+            # ------------------------------------------------
+            # NO DOCUMENT
+            # ------------------------------------------------
 
             if st.session_state.retriever is None:
 
                 answer = (
-                    "Please upload and process a document first."
+                    "Please upload and process a "
+                    "document first."
                 )
 
-                st.markdown(answer)
+                results = []
+
+                st.markdown(
+                    answer
+                )
 
 
             else:
 
-                # ----------------------------------------
-                # Hybrid retrieval
-                # ----------------------------------------
+                # --------------------------------------------
+                # RETRIEVAL
+                # --------------------------------------------
 
                 try:
 
                     results = (
-                        st.session_state.retriever.search(
+                        st.session_state
+                        .retriever
+                        .search(
                             question,
                             top_k=6
                         )
@@ -364,56 +453,70 @@ if question:
                     )
 
 
-                # ----------------------------------------
-                # Gemini answer
-                # ----------------------------------------
+                # --------------------------------------------
+                # CONVERSATION FORMAT
+                # --------------------------------------------
+
+                conversation = []
+
+                for item in st.session_state.chat:
+
+                    conversation.append(
+                        {
+                            "role": "user",
+                            "content": item["q"],
+                        }
+                    )
+
+                    conversation.append(
+                        {
+                            "role": "assistant",
+                            "content": item["a"],
+                        }
+                    )
+
+
+                # --------------------------------------------
+                # GEMINI
+                # --------------------------------------------
 
                 try:
 
                     assistant = GeminiAssistant()
 
-                    conversation = []
-
-for item in st.session_state.chat:
-    conversation.append({
-        "role": "user",
-        "content": item["q"]
-    })
-
-    conversation.append({
-        "role": "assistant",
-        "content": item["a"]
-    })
-
-answer = assistant.answer(
-    question,
-    results,
-    st.session_state.records,
-    conversation
-)
+                    answer = assistant.answer(
+                        question,
+                        results,
+                        st.session_state.records,
+                        conversation,
+                    )
 
                 except Exception as exc:
 
                     answer = (
-                        f"I could not generate the AI answer: "
+                        "I could not generate the AI answer: "
                         f"{exc}"
                     )
 
 
-                # ----------------------------------------
-                # Display answer
-                # ----------------------------------------
+                # --------------------------------------------
+                # DISPLAY ANSWER
+                # --------------------------------------------
 
-                st.markdown(answer)
+                st.markdown(
+                    answer
+                )
 
 
-                # ----------------------------------------
-                # Display sources ONCE
-                # ----------------------------------------
+                # --------------------------------------------
+                # SOURCES
+                # --------------------------------------------
 
                 if results:
 
-                    st.caption("Sources")
+                    st.caption(
+                        "Sources"
+                    )
 
                     shown_sources = set()
 
@@ -428,20 +531,22 @@ answer = assistant.answer(
                         if location in shown_sources:
                             continue
 
-                        shown_sources.add(location)
+                        shown_sources.add(
+                            location
+                        )
 
                         st.write(
                             f"- {location}"
                         )
 
 
-        # ----------------------------------------------------
-        # Save conversation
-        # ----------------------------------------------------
+        # ====================================================
+        # SAVE AI CHAT
+        # ====================================================
 
         st.session_state.chat.append(
             {
                 "q": question,
-                "a": answer
+                "a": answer,
             }
         )
