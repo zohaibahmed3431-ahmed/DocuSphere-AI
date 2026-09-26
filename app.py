@@ -1,155 +1,138 @@
+import io
+import hashlib
 import os
+import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
 
+from src.data_analysis import analyze_csv, format_total
 from src.ingestion import ingest_uploaded_file
 from src.retrieval import HybridRetriever
 from src.llm import GeminiAssistant
-from src.security import sanitize_question
-from src.citations import format_sources
 
-load_dotenv()
-
-st.set_page_config(
-    page_title="DocuSphere AI",
-    page_icon="📚",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-st.markdown("""
-<style>
-.block-container {padding-top: 1.2rem; max-width: 1400px;}
-[data-testid="stSidebar"] {min-width: 290px; max-width: 330px;}
-.source-card {
-    padding: 0.7rem 0.9rem; border: 1px solid rgba(128,128,128,.25);
-    border-radius: 10px; margin: .35rem 0;
-}
-.small-muted {opacity: .72; font-size: .86rem;}
-</style>
-""", unsafe_allow_html=True)
-
+st.set_page_config(page_title="DocuSphere AI", page_icon="📚", layout="wide")
 st.title("📚 DocuSphere AI")
-st.caption("Intelligent Document Assistant • Multimodal ingestion • Hybrid RAG • Gemini")
+st.caption("Intelligent document assistant with RAG, citations, code understanding, and CSV analytics.")
 
-SUPPORTED = [
-    "pdf", "docx", "txt", "md", "pptx", "xlsx", "csv",
-    "py", "java", "cpp", "c", "h", "hpp", "js", "ts",
-    "html", "css", "sql", "json", "xml",
-    "jpg", "jpeg", "png", "webp",
-]
+SUPPORTED = ["pdf","docx","txt","md","pptx","xlsx","csv","py","java","cpp","c","h","hpp","js","ts","html","css","sql","json","xml","jpg","jpeg","png","webp"]
 
+if "files_signature" not in st.session_state:
+    st.session_state.files_signature = None
 if "records" not in st.session_state:
     st.session_state.records = []
+if "chunks" not in st.session_state:
+    st.session_state.chunks = []
+if "retriever" not in st.session_state:
+    st.session_state.retriever = None
+if "csv_frames" not in st.session_state:
+    st.session_state.csv_frames = {}
 if "chat" not in st.session_state:
     st.session_state.chat = []
-if "retriever" not in st.session_state:
-    st.session_state.retriever = HybridRetriever()
-if "assistant" not in st.session_state:
-    st.session_state.assistant = GeminiAssistant()
 
 with st.sidebar:
-    st.header("📁 Documents")
-    uploads = st.file_uploader(
-        "Upload one or more files",
-        type=SUPPORTED,
-        accept_multiple_files=True,
-        help="Upload documents, spreadsheets, images, or source-code files.",
-    )
+    st.header("Documents")
+    uploads = st.file_uploader("Upload files", type=SUPPORTED, accept_multiple_files=True)
+    st.divider()
+    st.caption("CSV questions use deterministic pandas calculations. Gemini is not used to invent totals.")
 
-    if st.button("➕ Process uploads", use_container_width=True, disabled=not uploads):
-        new_records = []
-        progress = st.progress(0)
-        status = st.empty()
 
-        for i, uploaded in enumerate(uploads):
-            status.write(f"Processing `{uploaded.name}`…")
+def signature(files):
+    parts = []
+    for f in sorted(files or [], key=lambda x: x.name.lower()):
+        b = f.getvalue()
+        parts.append(f"{f.name}:{len(b)}:{hashlib.sha256(b).hexdigest()}")
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest() if parts else None
+
+if uploads:
+    sig = signature(uploads)
+    if sig != st.session_state.files_signature:
+        with st.spinner("Processing documents and building search index..."):
+            records = []
+            csv_frames = {}
+            for f in uploads:
+                try:
+                    records.extend(ingest_uploaded_file(f))
+                except Exception as exc:
+                    st.warning(f"Could not process {f.name}: {exc}")
+                if f.name.lower().endswith(".csv"):
+                    try:
+                        csv_frames[f.name] = pd.read_csv(io.BytesIO(f.getvalue()))
+                    except Exception as exc:
+                        st.warning(f"Could not analyze CSV {f.name}: {exc}")
+            st.session_state.records = records
+            st.session_state.csv_frames = csv_frames
+            st.session_state.files_signature = sig
+            # The existing ingestion layer returns searchable chunks/records.
+            st.session_state.chunks = records
             try:
-                records = ingest_uploaded_file(uploaded)
-                new_records.extend(records)
-            except Exception as exc:
-                st.error(f"{uploaded.name}: {exc}")
-            progress.progress((i + 1) / len(uploads))
+                st.session_state.retriever = HybridRetriever(records)
+            except Exception:
+                st.session_state.retriever = HybridRetriever(chunks=records)
 
-        if new_records:
-            # Replace same-name files rather than duplicating them.
-            names = {r["source"] for r in new_records}
-            st.session_state.records = [
-                r for r in st.session_state.records if r["source"] not in names
-            ] + new_records
-            st.session_state.retriever.build(st.session_state.records)
-            st.success(f"Ready: {len(new_records)} content units.")
-            st.rerun()
-
-    if st.session_state.records:
-        st.divider()
-        st.subheader("Ready documents")
-        counts = {}
-        for r in st.session_state.records:
-            counts[r["source"]] = counts.get(r["source"], 0) + 1
-        for name, count in counts.items():
-            st.write(f"📄 **{name}**  \n`{count} chunks`")
-
-        if st.button("🗑️ Clear documents", use_container_width=True):
-            st.session_state.records = []
-            st.session_state.retriever.clear()
-            st.session_state.chat = []
-            st.rerun()
-
-    st.divider()
-    st.subheader("Pipeline")
-    st.write("📤 Upload → Detect → Extract/OCR → Normalize → Chunk")
-    st.write("🧩 Embed → Vector index → Hybrid retrieval → Rerank → Gemini")
-    st.write("📌 Answer → Citation")
-
-    st.divider()
-    if st.button("🧹 Clear chat", use_container_width=True):
-        st.session_state.chat = []
-        st.rerun()
-
-# Main chat
-if not st.session_state.records:
-    st.info("Upload documents from the left to start. You can also ask general AI questions.")
+    st.success(f"Ready: {len(uploads)} file(s)")
+    if st.session_state.csv_frames:
+        st.caption("CSV files available for exact data analysis: " + ", ".join(st.session_state.csv_frames))
 else:
-    st.success(f"{len({r['source'] for r in st.session_state.records})} document(s) ready.")
+    st.info("Upload one or more documents to begin.")
 
 for item in st.session_state.chat:
-    with st.chat_message(item["role"]):
-        st.markdown(item["content"])
-        if item.get("sources"):
-            st.markdown(format_sources(item["sources"]))
+    with st.chat_message("user"):
+        st.markdown(item["q"])
+    with st.chat_message("assistant"):
+        st.markdown(item["a"])
 
-question = st.chat_input(
-    "Ask about your files, ask for an explanation, or modify uploaded code…"
-)
+question = st.chat_input("Ask about your documents or CSV data...")
 
 if question:
-    clean_question = sanitize_question(question)
-    if not clean_question:
-        st.warning("Please enter a question.")
-        st.stop()
-
-    st.session_state.chat.append({"role": "user", "content": question})
-
     with st.chat_message("user"):
         st.markdown(question)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking…"):
-            results = st.session_state.retriever.search(clean_question, top_k=8)
-            history = st.session_state.chat[-12:]
-            answer = st.session_state.assistant.answer(
-                question=clean_question,
-                retrieved=results,
-                all_records=st.session_state.records,
-                conversation=history,
+    # ========================================================
+    # CSV ANALYTICS PATH — exact calculation first
+    # ========================================================
+    csv_result = None
+    csv_name = None
+    for name, frame in st.session_state.csv_frames.items():
+        result = analyze_csv(frame, question)
+        if result is not None:
+            csv_result = result
+            csv_name = name
+            break
+
+    if csv_result is not None:
+        with st.chat_message("assistant"):
+            st.markdown(
+                f"### 📊 CSV Analysis\n"
+                f"**{csv_result['value_column']} — {csv_result['period']}:** {format_total(csv_result['total'])}\n\n"
+                f"**Period:** {csv_result['start'].date()} → {csv_result['end'].date()}  \n"
+                f"**Records:** {csv_result['record_count']}  \n"
+                f"**Date column:** `{csv_result['date_column']}`  \n"
+                f"**File:** `{csv_name}`"
             )
-
-        st.markdown(answer)
-        st.markdown(format_sources(results))
-
-    st.session_state.chat.append({
-        "role": "assistant",
-        "content": answer,
-        "sources": results,
-    })
+            st.subheader("Complete matching records")
+            st.dataframe(csv_result["records"], use_container_width=True, hide_index=True)
+            st.subheader("Daily trend")
+            chart_df = csv_result["daily"].set_index("Date")
+            st.line_chart(chart_df)
+            st.caption("Numbers and chart are calculated directly from the CSV with pandas; Gemini is not used for arithmetic.")
+        st.session_state.chat.append({"q": question, "a": f"CSV analysis from `{csv_name}`: {format_total(csv_result['total'])} {csv_result['value_column']} for {csv_result['period']}."})
+    else:
+        with st.chat_message("assistant"):
+            if st.session_state.retriever is None:
+                answer = "Please upload and process a document first."
+            else:
+                try:
+                    results = st.session_state.retriever.search(question, top_k=6)
+                except TypeError:
+                    results = st.session_state.retriever.search(question)
+                try:
+                    assistant = GeminiAssistant()
+                    answer = assistant.answer(question, results, st.session_state.chat)
+                except Exception as exc:
+                    answer = f"I could not generate the AI answer: {exc}"
+                st.markdown(answer)
+                if results:
+                    st.caption("Sources")
+                    for r in results[:6]:
+                        location = r.get("location") or r.get("source") or "Unknown source"
+                        st.write(f"- {location}")
+        st.session_state.chat.append({"q": question, "a": answer})
