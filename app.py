@@ -372,12 +372,25 @@ if question:
 
                     assistant = GeminiAssistant()
 
-                    answer = assistant.answer(
-                        question,
-                        results,
-                        st.session_state.records,
-                        st.session_state.chat
-                    )
+                    conversation = []
+
+for item in st.session_state.chat:
+    conversation.append({
+        "role": "user",
+        "content": item["q"]
+    })
+
+    conversation.append({
+        "role": "assistant",
+        "content": item["a"]
+    })
+
+answer = assistant.answer(
+    question,
+    results,
+    st.session_state.records,
+    conversation
+)
 
                 except Exception as exc:
 
