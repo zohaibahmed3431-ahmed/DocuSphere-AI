@@ -133,8 +133,8 @@ if question:
                       records,
                       st.session_state.chat
                   )
-            except Exception as exc:
-                answer = f"I could not generate the AI answer: {exc}"
+                except Exception as exc:
+                  answer = f"I could not generate the AI answer: {exc}"
 
             st.markdown(answer)
                 if results:
