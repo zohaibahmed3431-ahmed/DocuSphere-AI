@@ -3,7 +3,10 @@ import hashlib
 import pandas as pd
 import streamlit as st
 
-from src.data_analysis import analyze_csv, format_total
+from src.data_analysis import (
+    analyze_csv,
+    format_total,
+)
 from src.ingestion import ingest_uploaded_file
 from src.retrieval import HybridRetriever
 from src.llm import GeminiAssistant
@@ -16,42 +19,21 @@ from src.llm import GeminiAssistant
 st.set_page_config(
     page_title="DocuSphere AI",
     page_icon="📚",
-    layout="wide"
+    layout="wide",
 )
 
 st.title("📚 DocuSphere AI")
-
 st.caption(
     "Intelligent document assistant with RAG, citations, "
-    "code understanding, and CSV analytics."
+    "code understanding, and professional CSV analytics."
 )
 
 
 SUPPORTED = [
-    "pdf",
-    "docx",
-    "txt",
-    "md",
-    "pptx",
-    "xlsx",
-    "csv",
-    "py",
-    "java",
-    "cpp",
-    "c",
-    "h",
-    "hpp",
-    "js",
-    "ts",
-    "html",
-    "css",
-    "sql",
-    "json",
-    "xml",
-    "jpg",
-    "jpeg",
-    "png",
-    "webp",
+    "pdf", "docx", "txt", "md", "pptx", "xlsx", "csv",
+    "py", "java", "cpp", "c", "h", "hpp", "js", "ts",
+    "html", "css", "sql", "json", "xml",
+    "jpg", "jpeg", "png", "webp",
 ]
 
 
@@ -95,8 +77,8 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "CSV questions use deterministic pandas calculations. "
-        "Gemini is not used to invent totals."
+        "CSV calculations use pandas on the complete uploaded "
+        "dataset. Gemini is not used to invent numerical results."
     )
 
 
@@ -110,14 +92,14 @@ def signature(files):
 
     for f in sorted(
         files or [],
-        key=lambda x: x.name.lower()
+        key=lambda x: x.name.lower(),
     ):
 
-        b = f.getvalue()
+        data = f.getvalue()
 
         parts.append(
-            f"{f.name}:{len(b)}:"
-            f"{hashlib.sha256(b).hexdigest()}"
+            f"{f.name}:{len(data)}:"
+            f"{hashlib.sha256(data).hexdigest()}"
         )
 
     if not parts:
@@ -126,6 +108,119 @@ def signature(files):
     return hashlib.sha256(
         "\n".join(parts).encode()
     ).hexdigest()
+
+
+# ============================================================
+# PROFESSIONAL CSV CHART RENDERER
+# ============================================================
+
+def render_csv_charts(charts):
+
+    if not charts:
+        return
+
+    try:
+        import plotly.express as px
+    except ImportError:
+        st.warning(
+            "Professional interactive charts require Plotly. "
+            "Add `plotly>=6.0.0` to requirements.txt."
+        )
+        return
+
+    st.subheader("📊 Data Visualization")
+
+    for chart in charts:
+
+        data = chart.get("data")
+
+        if data is None or data.empty:
+            continue
+
+        chart_kind = chart.get("kind")
+        x_col = chart.get("x")
+        y_col = chart.get("y")
+
+        if (
+            x_col not in data.columns
+            or y_col not in data.columns
+        ):
+            continue
+
+        if chart_kind == "line":
+
+            fig = px.line(
+                data,
+                x=x_col,
+                y=y_col,
+                markers=True,
+                title=chart.get(
+                    "title",
+                    "Trend",
+                ),
+            )
+
+        elif chart_kind == "bar":
+
+            fig = px.bar(
+                data,
+                x=x_col,
+                y=y_col,
+                title=chart.get(
+                    "title",
+                    "Distribution",
+                ),
+            )
+
+        else:
+            continue
+
+        fig.update_layout(
+            height=430,
+            margin={
+                "l": 20,
+                "r": 20,
+                "t": 70,
+                "b": 30,
+            },
+            hovermode="x unified",
+            title={
+                "text": chart.get(
+                    "title",
+                    "Data Visualization",
+                ),
+                "x": 0.02,
+            },
+            xaxis_title=x_col,
+            yaxis_title=y_col,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+
+        fig.update_xaxes(
+            showgrid=False,
+            automargin=True,
+        )
+
+        fig.update_yaxes(
+            showgrid=True,
+            gridcolor="rgba(128,128,128,0.18)",
+            automargin=True,
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "displaylogo": False,
+                "responsive": True,
+            },
+        )
+
+        if chart.get("description"):
+            st.caption(
+                chart["description"]
+            )
 
 
 # ============================================================
@@ -145,15 +240,17 @@ if uploads:
             records = []
             csv_frames = {}
 
-            for f in uploads:
+            for file in uploads:
 
                 # ------------------------------------------------
-                # DOCUMENT INGESTION
+                # Normal document ingestion
                 # ------------------------------------------------
 
                 try:
 
-                    extracted_records = ingest_uploaded_file(f)
+                    extracted_records = (
+                        ingest_uploaded_file(file)
+                    )
 
                     records.extend(
                         extracted_records
@@ -162,21 +259,23 @@ if uploads:
                 except Exception as exc:
 
                     st.warning(
-                        f"Could not process {f.name}: {exc}"
+                        f"Could not process "
+                        f"{file.name}: {exc}"
                     )
 
-
                 # ------------------------------------------------
-                # CSV DATAFRAME
+                # Full CSV dataframe
                 # ------------------------------------------------
 
-                if f.name.lower().endswith(".csv"):
+                if file.name.lower().endswith(".csv"):
 
                     try:
 
-                        csv_frames[f.name] = pd.read_csv(
-                            io.BytesIO(
-                                f.getvalue()
+                        csv_frames[file.name] = (
+                            pd.read_csv(
+                                io.BytesIO(
+                                    file.getvalue()
+                                )
                             )
                         )
 
@@ -184,32 +283,29 @@ if uploads:
 
                         st.warning(
                             f"Could not analyze CSV "
-                            f"{f.name}: {exc}"
+                            f"{file.name}: {exc}"
                         )
 
-
             # ----------------------------------------------------
-            # SAVE PROCESSED DATA
+            # Save state
             # ----------------------------------------------------
 
             st.session_state.records = records
-
             st.session_state.chunks = records
-
             st.session_state.csv_frames = csv_frames
-
             st.session_state.files_signature = sig
 
-
             # ----------------------------------------------------
-            # BUILD RETRIEVAL INDEX
+            # Build hybrid retrieval
             # ----------------------------------------------------
 
             try:
 
                 retriever = HybridRetriever()
 
-                retriever.build(records)
+                retriever.build(
+                    records
+                )
 
                 st.session_state.retriever = retriever
 
@@ -218,19 +314,18 @@ if uploads:
                 st.session_state.retriever = None
 
                 st.error(
-                    f"Could not build search index: {exc}"
+                    "Could not build search index: "
+                    f"{exc}"
                 )
-
 
     st.success(
         f"Ready: {len(uploads)} file(s)"
     )
 
-
     if st.session_state.csv_frames:
 
         st.caption(
-            "CSV files available for exact data analysis: "
+            "CSV files available for exact analysis: "
             + ", ".join(
                 st.session_state.csv_frames.keys()
             )
@@ -244,7 +339,7 @@ else:
 
 
 # ============================================================
-# DISPLAY CHAT HISTORY
+# CHAT HISTORY
 # ============================================================
 
 for item in st.session_state.chat:
@@ -261,7 +356,7 @@ for item in st.session_state.chat:
 
 
 # ============================================================
-# QUESTION INPUT
+# QUESTION
 # ============================================================
 
 question = st.chat_input(
@@ -275,21 +370,18 @@ question = st.chat_input(
 
 if question:
 
-    # ========================================================
-    # USER MESSAGE
-    # ========================================================
-
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(
+            question
+        )
 
 
     # ========================================================
-    # CSV ANALYTICS
+    # CSV ANALYTICS / VISUALIZATION
     # ========================================================
 
     csv_result = None
     csv_name = None
-
 
     for name, frame in (
         st.session_state.csv_frames.items()
@@ -299,32 +391,56 @@ if question:
 
             result = analyze_csv(
                 frame,
-                question
+                question,
             )
 
         except Exception:
 
             result = None
 
-
         if result is not None:
 
             csv_result = result
             csv_name = name
-
             break
 
 
     # ========================================================
-    # CSV RESULT
+    # CSV RESPONSE
     # ========================================================
 
     if csv_result is not None:
 
         with st.chat_message("assistant"):
 
-            st.markdown(
-                f"""
+            # ------------------------------------------------
+            # VISUALIZATION REQUEST
+            # ------------------------------------------------
+
+            if csv_result.get("mode") == "visualization":
+
+                st.markdown(
+                    f"### 📊 Analysis of `{csv_name}`"
+                )
+
+                st.caption(
+                    f"Using the complete dataset "
+                    f"({csv_result['file_rows']:,} rows)."
+                )
+
+                render_csv_charts(
+                    csv_result.get("charts", [])
+                )
+
+
+            # ------------------------------------------------
+            # EXACT CALCULATION
+            # ------------------------------------------------
+
+            else:
+
+                st.markdown(
+                    f"""
 ### 📊 CSV Analysis
 
 **{csv_result['value_column']} — "
@@ -340,84 +456,70 @@ if question:
 
 **File:** `{csv_name}`
 """
-            )
+                )
 
+                st.subheader(
+                    "Complete matching records"
+                )
 
-            # ------------------------------------------------
-            # COMPLETE RECORDS
-            # ------------------------------------------------
+                st.dataframe(
+                    csv_result["records"],
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
-            st.subheader(
-                "Complete matching records"
-            )
+                render_csv_charts(
+                    csv_result.get("charts", [])
+                )
 
-            st.dataframe(
-                csv_result["records"],
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-            # ------------------------------------------------
-            # GRAPH
-            # ------------------------------------------------
-
-            st.subheader(
-                "Daily trend"
-            )
-
-            chart_df = (
-                csv_result["daily"]
-                .set_index("Date")
-            )
-
-            st.line_chart(
-                chart_df
-            )
-
-
-            st.caption(
-                "Numbers and chart are calculated directly "
-                "from the CSV with pandas; Gemini is not "
-                "used for arithmetic."
-            )
+                st.caption(
+                    "All numerical results are calculated "
+                    "directly from the complete CSV using "
+                    "pandas."
+                )
 
 
         # ----------------------------------------------------
-        # SAVE CSV CHAT
+        # Save CSV conversation
         # ----------------------------------------------------
+
+        if csv_result.get("mode") == "visualization":
+
+            chat_answer = (
+                f"Created professional visualizations "
+                f"from the complete `{csv_name}` dataset."
+            )
+
+        else:
+
+            chat_answer = (
+                f"CSV analysis from `{csv_name}`: "
+                f"{format_total(csv_result['total'])} "
+                f"{csv_result['value_column']} "
+                f"for {csv_result['period']}."
+            )
 
         st.session_state.chat.append(
             {
                 "q": question,
-                "a": (
-                    f"CSV analysis from `{csv_name}`: "
-                    f"{format_total(csv_result['total'])} "
-                    f"{csv_result['value_column']} "
-                    f"for {csv_result['period']}."
-                )
+                "a": chat_answer,
             }
         )
 
 
     # ========================================================
-    # DOCUMENT / GEMINI PATH
+    # DOCUMENT / GEMINI RESPONSE
     # ========================================================
 
     else:
 
         with st.chat_message("assistant"):
 
-
-            # ------------------------------------------------
-            # NO DOCUMENT
-            # ------------------------------------------------
-
             if st.session_state.retriever is None:
 
                 answer = (
-                    "Please upload and process a "
-                    "document first."
+                    "Please upload and process "
+                    "a document first."
                 )
 
                 results = []
@@ -425,7 +527,6 @@ if question:
                 st.markdown(
                     answer
                 )
-
 
             else:
 
@@ -440,7 +541,7 @@ if question:
                         .retriever
                         .search(
                             question,
-                            top_k=6
+                            top_k=6,
                         )
                     )
 
@@ -454,12 +555,14 @@ if question:
 
 
                 # --------------------------------------------
-                # CONVERSATION FORMAT
+                # CONVERSATION
                 # --------------------------------------------
 
                 conversation = []
 
-                for item in st.session_state.chat:
+                for item in (
+                    st.session_state.chat
+                ):
 
                     conversation.append(
                         {
@@ -494,14 +597,11 @@ if question:
                 except Exception as exc:
 
                     answer = (
-                        "I could not generate the AI answer: "
+                        "I could not generate "
+                        "the AI answer: "
                         f"{exc}"
                     )
 
-
-                # --------------------------------------------
-                # DISPLAY ANSWER
-                # --------------------------------------------
 
                 st.markdown(
                     answer
@@ -520,11 +620,11 @@ if question:
 
                     shown_sources = set()
 
-                    for r in results[:6]:
+                    for result in results[:6]:
 
                         location = (
-                            r.get("location")
-                            or r.get("source")
+                            result.get("location")
+                            or result.get("source")
                             or "Unknown source"
                         )
 
@@ -540,9 +640,9 @@ if question:
                         )
 
 
-        # ====================================================
-        # SAVE AI CHAT
-        # ====================================================
+        # ----------------------------------------------------
+        # Save AI conversation
+        # ----------------------------------------------------
 
         st.session_state.chat.append(
             {
