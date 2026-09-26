@@ -64,7 +64,8 @@ if uploads:
             # The existing ingestion layer returns searchable chunks/records.
             st.session_state.chunks = records
             try:
-                st.session_state.retriever = HybridRetriever(records)
+                st.session_state.retriever = HybridRetriever()
+                st.session_state.retriever.build(records)
             except Exception:
                 st.session_state.retriever = HybridRetriever(chunks=records)
 
