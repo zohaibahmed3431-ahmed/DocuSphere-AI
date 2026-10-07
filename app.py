@@ -1,7 +1,7 @@
 import os
 import sys
 
-# Root path add karna taake Streamlit Cloud core aur modules ko dhoond sake
+# Ensure root path is included
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
@@ -10,10 +10,10 @@ from core.document_parser import extract_file_context
 from core.llm_engine import generate_ai_response
 from modules.reconciliation import reconcile_ledgers
 
-# 1. Page Configuration
+# 1. Page Config
 st.set_page_config(page_title="DocuSphere", page_icon="📄", layout="wide")
 
-# 2. Session States Initializations
+# 2. Session State Initialization
 if "matched_csv" not in st.session_state:
     st.session_state.matched_csv = None
 if "unmatched_csv" not in st.session_state:
@@ -23,7 +23,7 @@ if "reconciled" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 3. Sidebar UI
+# 3. Sidebar UI (Cleaned - No Key Input Box)
 st.sidebar.markdown("## 📁 Documents")
 st.sidebar.markdown("**Upload one or more files**")
 
@@ -35,7 +35,6 @@ uploaded_files = st.sidebar.file_uploader(
 
 st.sidebar.caption("200MB per file • PDF, DOCX, TXT, MD, PNG, JPG, CSV, XLSX")
 st.sidebar.markdown("---")
-api_key_input = st.sidebar.text_input("Gemini API Key (Optional)", type="password")
 
 if st.sidebar.button("🗑️ Clear Conversation", use_container_width=True):
     st.session_state.messages = []
@@ -44,30 +43,30 @@ if st.sidebar.button("🗑️ Clear Conversation", use_container_width=True):
     st.session_state.reconciled = False
     st.rerun()
 
-# 4. Main Title
+# 4. Main Interface
 st.markdown("# DocuSphere")
 st.markdown("")
 
-# 5. Display Chat History
+# Render Chat History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 user_input = st.chat_input("Ask anything about your documents or any general query...")
 
-# 6. Automatic Request Routing
+# 5. Dynamic Routing
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # AUTO PROCESS FILES IN REAL-TIME (No manual button required)
+    # Real-time File Parsing
     file_context = extract_file_context(uploaded_files)
     low_input = user_input.lower().strip()
 
-    # Route A: Bank Reconciliation
+    # Reconciliation Execution
     if ("reconcile" in low_input or "reconciliation" in low_input) and uploaded_files and len(uploaded_files) >= 2:
-        with st.spinner("Executing Bank vs Ledger Reconciliation..."):
+        with st.spinner("Executing Reconciliation..."):
             try:
                 f1, f2 = uploaded_files[0], uploaded_files[1]
                 f1.seek(0)
@@ -82,20 +81,20 @@ if user_input:
                 st.session_state.reconciled = True
 
                 reply = f"""
-### 📊 Reconciliation Results Summary
+### 📊 Reconciliation Summary
 
 * **Matched Entries (REC-XXXXXX):** `{len(matched_df)}`
-* **Unmatched Entries Total:** `{len(unmatched_df)}`
+* **Unmatched Entries:** `{len(unmatched_df)}`
 
 ---
 
 #### 🟢 Matched Preview
-{matched_df.head(5).to_markdown(index=False) if not matched_df.empty else "No matched records found."}
+{matched_df.head(5).to_markdown(index=False) if not matched_df.empty else "No matches found."}
 
 ---
 
 #### 🔴 Unmatched Preview
-{unmatched_df.head(5).to_markdown(index=False) if not unmatched_df.empty else "No unmatched records found."}
+{unmatched_df.head(5).to_markdown(index=False) if not unmatched_df.empty else "No unmatched records."}
 """
                 st.session_state.messages.append({"role": "assistant", "content": reply})
                 with st.chat_message("assistant"):
@@ -107,18 +106,18 @@ if user_input:
                 with st.chat_message("assistant"):
                     st.markdown(err)
 
-    # Route B: Multimodal Gemini AI Generation
+    # Multi-language Gemini Processing
     else:
         with st.spinner("DocuSphere AI processing..."):
-            reply = generate_ai_response(user_input, file_context, api_key_input)
+            reply = generate_ai_response(user_input, file_context)
             st.session_state.messages.append({"role": "assistant", "content": reply})
             with st.chat_message("assistant"):
                 st.markdown(reply)
 
-# 7. Persistent Downloads (Won't disappear on click)
+# Download Buttons
 if st.session_state.reconciled:
     st.markdown("---")
-    st.subheader("📥 Download Reconciliation Data")
+    st.subheader("📥 Download Reconciliation Reports")
     col1, col2 = st.columns(2)
     with col1:
         st.download_button("🟢 Download Matched CSV", st.session_state.matched_csv, "docusphere_matched.csv", "text/csv")
