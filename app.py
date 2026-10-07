@@ -3,18 +3,17 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import re
-import io
 
 # ==========================================
-# 1. PAGE CONFIG & PERSISTENT SESSION STATE
+# 1. PAGE CONFIG & PERSISTENT STATE
 # ==========================================
 st.set_page_config(
-    page_title="FinAI Pro — Enterprise Autonomous Engine",
-    page_icon="💼",
+    page_title="DocuSphere AI — Enterprise Multi-File Data Engine",
+    page_icon="📁",
     layout="wide"
 )
 
-# Download State Lock (Streamlit Refresh Bug Fix)
+# Initialize Session States
 if "matched_csv" not in st.session_state:
     st.session_state.matched_csv = None
 if "unmatched_csv" not in st.session_state:
@@ -97,7 +96,6 @@ def reconcile_ledgers(bank_df: pd.DataFrame, ledger_df: pd.DataFrame):
             except Exception:
                 l_amt = 0.0
 
-            # Deterministic Match Rule
             if abs(abs(b_amt) - abs(l_amt)) > 0.01:
                 continue
 
@@ -116,13 +114,13 @@ def reconcile_ledgers(bank_df: pd.DataFrame, ledger_df: pd.DataFrame):
                 b_date = b_row[b_date_col] if b_date_col and pd.notna(b_row[b_date_col]) else "N/A"
                 
                 matched_records.append({
-                    "Match_ID": rec_id,
+                    "Reconciliation_ID": rec_id,
                     "Date": b_date,
                     "Bank_Original_Serial": b_row[b_serial_col],
                     "Ledger_Original_Serial": l_row[l_serial_col],
                     "Bank_Amount": b_amt,
                     "Ledger_Amount": l_amt,
-                    "Status": "MATCHED"
+                    "Match_Status": "MATCHED"
                 })
                 found_match = True
                 break
@@ -187,47 +185,67 @@ def reconcile_ledgers(bank_df: pd.DataFrame, ledger_df: pd.DataFrame):
     return matched_df, unmatched_df, summary, adjustments
 
 # ==========================================
-# 4. E-COMMERCE ANALYTICS ENGINE
+# 4. E-COMMERCE & SINGLE-FILE ANALYTICS
 # ==========================================
-def process_ecommerce_analytics(df: pd.DataFrame):
-    numeric_cols = df.select_dtypes(include=['number']).columns
-    rev_col = next((c for c in df.columns if 'sale' in c.lower() or 'revenue' in c.lower() or 'price' in c.lower() or 'amount' in c.lower()), None)
+def process_single_file_analytics(df: pd.DataFrame):
+    clean_df = clean_column_names(df)
+    numeric_cols = clean_df.select_dtypes(include=['number']).columns
+    rev_col = next((c for c in clean_df.columns if any(k in c for k in ['sale', 'revenue', 'price', 'amount', 'total', 'debit', 'credit'])), None)
     
-    total_revenue = float(df[rev_col].sum()) if rev_col else (float(df[numeric_cols[0]].sum()) if len(numeric_cols)>0 else 0.0)
-    order_count = len(df)
-    aov = total_revenue / order_count if order_count > 0 else 0.0
+    total_val = float(clean_df[rev_col].sum()) if rev_col else (float(clean_df[numeric_cols[0]].sum()) if len(numeric_cols)>0 else 0.0)
+    total_rows = len(clean_df)
+    avg_val = total_val / total_rows if total_rows > 0 else 0.0
     
     metrics = {
-        "total_revenue": round(total_revenue, 2),
-        "total_orders": order_count,
-        "average_order_value": round(aov, 2)
+        "total_value": round(total_val, 2),
+        "total_rows": total_rows,
+        "avg_value": round(avg_val, 2),
+        "columns": list(df.columns)
     }
     
     fig = None
     if rev_col:
-        fig = px.histogram(df, x=rev_col, title="Financial Distribution / Revenue Spread", template="plotly_white")
+        fig = px.histogram(clean_df, x=rev_col, title=f"Distribution of Column: '{rev_col.upper()}'", template="plotly_white")
         
-    return metrics, fig
+    return metrics, fig, clean_df
 
 # ==========================================
 # 5. USER INTERFACE & STREAMLIT LAYOUT
 # ==========================================
-st.title("💼 FinAI Pro — Enterprise Autonomous Financial Analyst")
-st.caption("Lead AI Accountant & Multi-File Data Processing Engine")
+# Header Title Fixed back to DocuSphere AI
+st.title("📁 DocuSphere AI — Enterprise Multi-File Data Engine")
+st.caption("Autonomous Financial Analyst, Bank Reconciliation & Multi-Format Document Intelligence")
 
-# Sidebar
+# Sidebar - Document Ingestion & Status
 st.sidebar.header("📁 Document Ingestion")
 uploaded_files = st.sidebar.file_uploader(
-    "Upload Bank Statements, General Ledgers, Shopify/Amazon CSVs",
+    "Upload Bank Statements, General Ledgers, Shopify/Amazon CSVs, or Excel",
     accept_multiple_files=True
 )
+
+# Active File Processing Indicator in Sidebar
+if uploaded_files:
+    st.sidebar.success(f"✅ {len(uploaded_files)} File(s) Loaded & Processed")
+    for idx, f in enumerate(uploaded_files, 1):
+        st.sidebar.caption(f"📄 **File {idx}:** {f.name} ({round(f.size/1024, 1)} KB)")
+else:
+    st.sidebar.info("ℹ️ No files uploaded yet. Drag & drop files above.")
+
+# Clear Conversation Button in Sidebar
+st.sidebar.markdown("---")
+if st.sidebar.button("🗑️ Clear Conversation", use_container_width=True):
+    st.session_state.messages = []
+    st.session_state.matched_csv = None
+    st.session_state.unmatched_csv = None
+    st.session_state.reconciled = False
+    st.rerun()
 
 # Render Chat History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-user_input = st.chat_input("Ask a financial question, request data analysis, or type 'reconcile'...")
+user_input = st.chat_input("Ask a financial question, request file analysis, or type 'reconcile'...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -236,24 +254,33 @@ if user_input:
 
     low_input = user_input.lower().strip()
 
-    # Router 1: Fast AI Greetings
-    if low_input in ["hi", "hello", "salam", "aoa", "assalam o alaikum", "hey"]:
-        reply = """Hello! I am **FinAI Pro**, your Lead AI Accountant and Financial Data Engine.
+    # Router 1: Fast AI Greetings & Persona Q&A (Fixes Robotic Loop)
+    if any(k in low_input for k in ["hi", "hello", "salam", "aoa", "hey", "how r u", "how are you", "who r u", "who are you", "who is zohaib"]):
+        if "who is zohaib" in low_input:
+            reply = "Zohaib is an engineering student and software developer building intelligent data systems like DocuSphere AI!"
+        elif "how r u" in low_input or "how are you" in low_input:
+            reply = "I'm doing great and running at peak performance! How can I assist you with your files or reconciliation today?"
+        elif "who r u" in low_input or "who are you" in low_input:
+            reply = "I am **DocuSphere AI** — your autonomous financial data analyst and document engine. I process multi-sheet ledgers, perform bank reconciliations, and answer financial queries."
+        else:
+            reply = """Hello! I am **DocuSphere AI**, your Autonomous Financial Analyst and Multi-File Engine.
 
 How can I assist you today?
 - 🏦 **Bank Reconciliation:** Upload Bank Statement + Internal Ledger and ask to reconcile.
-- 📊 **E-Commerce Analytics:** Upload Shopify, Amazon, Fiverr, or Sales CSVs for revenue & margin breakdowns.
-- 💻 **General & Technical Q&A:** Ask any accounting, tax, code, or general query."""
+- 📊 **Single/Multi File Analysis:** Upload any Excel/CSV to get immediate metrics, data summary, and visual charts.
+- 💬 **General Q&A:** Ask any question regarding your data, accounting, or system rules."""
         
         st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
             st.markdown(reply)
 
-    # Router 2: Reconciliation
-    elif "reconcile" in low_input or "ledger" in low_input or "bank" in low_input or "statement" in low_input:
+    # Router 2: Bank Reconciliation (Explicitly multi-file reconciliation)
+    elif "reconcile" in low_input or "reconciliation" in low_input:
         csv_xlsx_files = [f for f in (uploaded_files or []) if f.name.endswith(('.csv', '.xlsx'))]
+        
+        # Scenario A: User uploaded 2 files (Bank vs Ledger)
         if len(csv_xlsx_files) >= 2:
-            with st.spinner("Executing FinAI Pro Reconciliation Engine..."):
+            with st.spinner("Executing DocuSphere AI Reconciliation Engine..."):
                 f1, f2 = csv_xlsx_files[0], csv_xlsx_files[1]
                 
                 df1 = pd.read_csv(f1) if f1.name.endswith('.csv') else pd.read_excel(f1)
@@ -268,9 +295,9 @@ How can I assist you today?
                 reply = f"""
 ### 📊 Executive Summary — Bank vs General Ledger Reconciliation
 
-* **Total Bank Transactions:** `{summary['total_bank_txns']}`
-* **Total Ledger Transactions:** `{summary['total_ledger_txns']}`
-* **Matched Pairs (REC-001 ID Assigned):** `{summary['matched_pairs']}`
+* **File 1 Processed:** `{f1.name}` ({summary['total_bank_txns']} rows)
+* **File 2 Processed:** `{f2.name}` ({summary['total_ledger_txns']} rows)
+* **Matched Pairs (REC-001 Assigned):** `{summary['matched_pairs']}`
 * **Unmatched Bank Entries:** `{summary['unmatched_bank_count']}`
 * **Unmatched Ledger Entries:** `{summary['unmatched_ledger_count']}`
 * **Net Financial Variance:** `${summary['net_variance']}`
@@ -295,46 +322,76 @@ How can I assist you today?
                 st.session_state.messages.append({"role": "assistant", "content": reply})
                 with st.chat_message("assistant"):
                     st.markdown(reply)
-        else:
-            reply = "⚠️ Please upload at least **2 files** (Bank Statement and Internal General Ledger) in the sidebar to execute reconciliation."
-            st.session_state.messages.append({"role": "assistant", "content": reply})
-            with st.chat_message("assistant"):
-                st.markdown(reply)
 
-    # Router 3: Analytics
-    elif "sales" in low_input or "revenue" in low_input or "profit" in low_input or "chart" in low_input or "graph" in low_input:
-        csv_files = [f for f in (uploaded_files or []) if f.name.endswith(('.csv', '.xlsx'))]
-        if csv_files:
-            f = csv_files[0]
+        # Scenario B: Single file uploaded but user requested reconciliation
+        elif len(csv_xlsx_files) == 1:
+            f = csv_xlsx_files[0]
             df = pd.read_csv(f) if f.name.endswith('.csv') else pd.read_excel(f)
-            metrics, fig = process_ecommerce_analytics(df)
+            metrics, fig, clean_df = process_single_file_analytics(df)
             
             reply = f"""
-### 📈 Financial Analytics Summary
+### 📄 Single-File Direct Analysis Mode: `{f.name}`
 
-* **Gross Revenue / Total Sales:** `${metrics['total_revenue']}`
-* **Total Orders Processed:** `{metrics['total_orders']}`
-* **Average Order Value (AOV):** `${metrics['average_order_value']}`
+> **Note:** For a full 2-way Bank vs Ledger Reconciliation, please upload **2 files** in the sidebar. Currently performing deep multi-column analysis on uploaded file.
+
+* **File Name:** `{f.name}`
+* **Total Rows Loaded:** `{metrics['total_rows']}`
+* **Calculated Column Sum / Total Value:** `${metrics['total_value']}`
+* **Average Row Value:** `${metrics['avg_value']}`
+* **Detected Columns:** `{", ".join(metrics['columns'][:8])}`
+
+---
+
+#### 📋 File Data Preview
+{clean_df.head(5).to_markdown(index=False)}
 """
             st.session_state.messages.append({"role": "assistant", "content": reply})
             with st.chat_message("assistant"):
                 st.markdown(reply)
                 if fig:
                     st.plotly_chart(fig, use_container_width=True)
+
         else:
-            reply = "Please upload a financial/sales CSV or XLSX dataset in sidebar to generate analytics."
+            reply = "⚠️ Please upload at least **1 or 2 files** (Bank Statement and General Ledger) in the sidebar to execute reconciliation or analysis."
             st.session_state.messages.append({"role": "assistant", "content": reply})
             with st.chat_message("assistant"):
                 st.markdown(reply)
 
-    # Router 4: Fallback
+    # Router 3: Any File Query / Analysis / Single File Direct Request
+    elif uploaded_files:
+        f = uploaded_files[0]
+        df = pd.read_csv(f) if f.name.endswith('.csv') else pd.read_excel(f)
+        metrics, fig, clean_df = process_single_file_analytics(df)
+        
+        reply = f"""
+### 📈 Processing File Request: `{f.name}`
+
+I have processed **`{f.name}`** using deterministic logic:
+
+* **Total Records:** `{metrics['total_rows']}` rows
+* **Aggregated Financial / Numeric Total:** `${metrics['total_value']}`
+* **Average Value:** `${metrics['avg_value']}`
+* **Detected Columns:** `{", ".join(metrics['columns'][:6])}...`
+
+---
+
+#### 📊 Data Preview
+{clean_df.head(5).to_markdown(index=False)}
+"""
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+        with st.chat_message("assistant"):
+            st.markdown(reply)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+
+    # Router 4: Dynamic Helpful Conversational Fallback
     else:
-        reply = f"**FinAI Pro:** Processed query '{user_input}'. Ready to perform analysis or reconciliation."
+        reply = f"I am **DocuSphere AI**. I received your query: *'{user_input}'*.\n\nTo analyze data or perform bank reconciliation, please upload your Excel/CSV file(s) in the sidebar."
         st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
             st.markdown(reply)
 
-# Persistent Download Buttons
+# Persistent Download Buttons Section
 if st.session_state.reconciled:
     st.markdown("---")
     st.subheader("📥 Download Reconciled Reports")
@@ -343,7 +400,7 @@ if st.session_state.reconciled:
         st.download_button(
             label="🟢 Download Matched CSV",
             data=st.session_state.matched_csv,
-            file_name="finai_pro_matched.csv",
+            file_name="docusphere_matched.csv",
             mime="text/csv",
             key="btn_download_matched"
         )
@@ -351,7 +408,7 @@ if st.session_state.reconciled:
         st.download_button(
             label="🔴 Download Unmatched CSV",
             data=st.session_state.unmatched_csv,
-            file_name="finai_pro_unmatched.csv",
+            file_name="docusphere_unmatched.csv",
             mime="text/csv",
             key="btn_download_unmatched"
         )
