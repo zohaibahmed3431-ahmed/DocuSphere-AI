@@ -1,3 +1,9 @@
+import os
+import sys
+
+# Root path add karna taake Streamlit Cloud core aur modules ko dhoond sake
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import streamlit as st
 import pandas as pd
 from core.document_parser import extract_file_context
