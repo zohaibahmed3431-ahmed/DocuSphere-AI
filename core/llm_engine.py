@@ -1,20 +1,23 @@
 import google.generativeai as genai
 from core.config import get_gemini_api_key
 
-def generate_ai_response(user_query: str, file_context: str, user_api_key: str = None) -> str:
-    api_key = get_gemini_api_key(user_api_key)
+def generate_ai_response(user_query: str, file_context: str) -> str:
+    # Key backend environment ya Streamlit secrets se auto-fetch hogi
+    api_key = get_gemini_api_key()
+    
     if not api_key:
-        return f"**Query Received:** *'{user_query}'*\n\n{file_context}\n\n*(Please enter a valid Gemini API Key in sidebar or st.secrets to get live AI responses)*"
+        return "❌ **API Key Missing:** Streamlit Cloud Secrets mein `GEMINI_API_KEY` set karein."
 
     try:
         genai.configure(api_key=api_key)
+        
         prompt = f"""
 You are DocuSphere, an intelligent multimodal AI assistant.
 
 SYSTEM INSTRUCTIONS:
-1. Detect the language of user input (Urdu, Roman Urdu, English, Arabic, etc.) and respond in the EXACT same language naturally.
-2. If document context is relevant, give clear, accurate references.
-3. If user is asking general questions, answer directly using your AI intelligence.
+1. Detect the user's input language and respond in the EXACT same language naturally.
+2. If document context is present, cite specific page/data details accurately.
+3. If no document is needed, act as a direct, helpful AI.
 
 DOCUMENT CONTEXT:
 {file_context}
@@ -22,14 +25,10 @@ DOCUMENT CONTEXT:
 USER QUERY:
 {user_query}
 """
-        try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception:
-            model = genai.GenerativeModel("gemini-pro")
-            response = model.generate_content(prompt)
-            return response.text
+        # Updated models endpoint
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        return response.text
 
     except Exception as e:
-        return f"❌ Gemini API Engine Error: {str(e)}"
+        return f"❌ AI Engine Error: {str(e)}"
