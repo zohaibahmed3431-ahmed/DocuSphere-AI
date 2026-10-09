@@ -1,0 +1,11 @@
+APP_NAME = "Bank Reconciliation AI"
+
+SUPPORTED_UPLOAD_TYPES = ["xlsx", "xls", "csv"]
+
+DEFAULT_DATE_TOLERANCE_DAYS = 0
+DEFAULT_AMOUNT_TOLERANCE = 0.0
+
+MAX_FILE_SIZE_MB = 200
+
+UPLOAD_FOLDER = "uploads"
+OUTPUT_FOLDER = "outputs"
