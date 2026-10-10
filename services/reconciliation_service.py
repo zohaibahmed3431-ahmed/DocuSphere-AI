@@ -1,107 +1,79 @@
-def run_reconciliation(bank_df, ledger_df):
-    bank_df = bank_df.copy()
-    ledger_df = ledger_df.copy()
-    counter = 0
+from core.file_loader import load_file
+from core.data_cleaner import clean_sheet, standardize
+from core.reconciler import run_reconciliation
 
-    # Rule 1: Exact Reference + Amount + Direction
-    for b_idx, bank in bank_df.iterrows():
-        if bank_df.at[b_idx, "Status"] == "Matched":
-            continue
 
-        ref = str(bank["Reference"]).strip()
-        if not ref:
-            continue
+def process_reconciliation(uploaded_files, date_tolerance_days=0):
+    bank_file = None
+    ledger_file = None
 
-        candidates = ledger_df[
-            (ledger_df["Status"] == "Unmatched")
-            & (ledger_df["Reference"].astype(str).str.strip() == ref)
-            & (ledger_df["Amount"] == bank["Amount"])
-            & (ledger_df["Direction"] == bank["Direction"])
-        ]
+    for uploaded_file in uploaded_files:
+        sheets = load_file(uploaded_file)
 
-        if len(candidates) != 1:
-            continue
+        if len(sheets) >= 2 and bank_file is None:
+            sheet_names = list(sheets.keys())
 
-        l_idx = candidates.index[0]
-        counter += 1
-        match_id = f"REC-{counter:04d}"
+            bank_file = {
+                "name": uploaded_file.name,
+                "bank_sheet": sheet_names[0],
+                "ledger_sheet": sheet_names[1],
+                "sheets": sheets,
+            }
 
-        bank_df.at[b_idx, "Status"] = "Matched"
-        bank_df.at[b_idx, "Match ID"] = match_id
-        bank_df.at[b_idx, "Match Rule"] = "Exact Reference"
+        elif bank_file is None:
+            bank_file = {
+                "name": uploaded_file.name,
+                "bank_sheet": list(sheets.keys())[0],
+                "ledger_sheet": None,
+                "sheets": sheets,
+            }
 
-        ledger_df.at[l_idx, "Status"] = "Matched"
-        ledger_df.at[l_idx, "Match ID"] = match_id
-        ledger_df.at[l_idx, "Match Rule"] = "Exact Reference"
+        elif ledger_file is None:
+            ledger_file = {
+                "name": uploaded_file.name,
+                "bank_sheet": None,
+                "ledger_sheet": list(sheets.keys())[0],
+                "sheets": sheets,
+            }
 
-    # Rule 2: Exact Amount + Same Date (sirf unique candidate)
-    for b_idx, bank in bank_df.iterrows():
-        if bank_df.at[b_idx, "Status"] == "Matched":
-            continue
+    if bank_file is None:
+        raise ValueError("Bank statement file upload karein.")
 
-        candidates = ledger_df[
-            (ledger_df["Status"] == "Unmatched")
-            & (ledger_df["Amount"] == bank["Amount"])
-            & (ledger_df["Direction"] == bank["Direction"])
-            & (ledger_df["Date"] == bank["Date"])
-        ]
+    if ledger_file is None:
+        raise ValueError("Company ledger file upload karein.")
 
-        if len(candidates) != 1:
-            continue
+    bank_sheet_name = bank_file["bank_sheet"]
+    ledger_sheet_name = (
+        ledger_file["ledger_sheet"]
+        if ledger_file["ledger_sheet"]
+        else ledger_file["bank_sheet"]
+    )
 
-        l_idx = candidates.index[0]
-        counter += 1
-        match_id = f"REC-{counter:04d}"
+    bank_clean = clean_sheet(bank_file["sheets"][bank_sheet_name])
+    ledger_clean = clean_sheet(ledger_file["sheets"][ledger_sheet_name])
 
-        bank_df.at[b_idx, "Status"] = "Matched"
-        bank_df.at[b_idx, "Match ID"] = match_id
-        bank_df.at[b_idx, "Match Rule"] = "Exact Amount + Date"
+    bank_df = standardize(
+        bank_clean,
+        "Bank Statement",
+        bank_sheet_name,
+        bank_file["name"],
+    )
 
-        ledger_df.at[l_idx, "Status"] = "Matched"
-        ledger_df.at[l_idx, "Match ID"] = match_id
-        ledger_df.at[l_idx, "Match Rule"] = "Exact Amount + Date"
+    ledger_df = standardize(
+        ledger_clean,
+        "Company Ledger",
+        ledger_sheet_name,
+        ledger_file["name"],
+    )
 
-    # Rule 3: Exact Amount + Date Window (3 din) — Suggested Match
-    for b_idx, bank in bank_df.iterrows():
-        if bank_df.at[b_idx, "Status"] == "Matched":
-            continue
+    bank_df, ledger_df, summary = run_reconciliation(
+        bank_df,
+        ledger_df,
+        date_tolerance_days,
+    )
 
-        bank_date = bank["Date"]
-
-        candidates = ledger_df[
-            (ledger_df["Status"] == "Unmatched")
-            & (ledger_df["Amount"] == bank["Amount"])
-            & (ledger_df["Direction"] == bank["Direction"])
-            & (ledger_df["Date"].apply(
-                lambda d: abs((d - bank_date).days) <= 3
-            ))
-        ]
-
-        if len(candidates) != 1:
-            continue
-
-        l_idx = candidates.index[0]
-        counter += 1
-        match_id = f"REC-{counter:04d}"
-
-        bank_df.at[b_idx, "Status"] = "Suggested Match"
-        bank_df.at[b_idx, "Match ID"] = match_id
-        bank_df.at[b_idx, "Match Rule"] = "Amount + Date Window (3 days)"
-
-        ledger_df.at[l_idx, "Status"] = "Suggested Match"
-        ledger_df.at[l_idx, "Match ID"] = match_id
-        ledger_df.at[l_idx, "Match Rule"] = "Amount + Date Window (3 days)"
-
-    bank_unmatched = bank_df[bank_df["Status"] == "Unmatched"]
-    ledger_unmatched = ledger_df[ledger_df["Status"] == "Unmatched"]
-
-    summary = {
-        "Bank Transactions": len(bank_df),
-        "Ledger Transactions": len(ledger_df),
-        "Matched": len(bank_df) - len(bank_unmatched),
-        "Bank Unmatched": len(bank_unmatched),
-        "Ledger Unmatched": len(ledger_unmatched),
-        "Status": "Needs Review" if len(bank_unmatched) or len(ledger_unmatched) else "Reconciled",
+    return {
+        "bank": bank_df,
+        "ledger": ledger_df,
+        "summary": summary,
     }
-
-    return bank_df, ledger_df, summary
