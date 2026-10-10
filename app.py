@@ -458,6 +458,10 @@ def ask_ai(question):
     system_prompt = """
 You are a professional Bank Reconciliation AI assistant.
 
+Language rule:
+- Detect the user's language automatically (Urdu, English, Roman Urdu, or mix).
+- Always reply in the SAME language/style the user used.
+
 Rules:
 1. Answer using the provided file data and reconciliation results.
 2. If information is not available, say: "Uploaded files mein is sawal ka jawab nahi mila."
@@ -465,8 +469,7 @@ Rules:
 4. For reconciliation questions, use the reconciliation summary and transaction data.
 5. For general questions, answer professionally using your own knowledge.
 6. Mention file name, sheet name, and row number when answering from file data.
-7. Reply in the same language style as the user (Urdu/English mix is fine).
-8. Be concise, professional, and accurate.
+7. Be concise, professional, and accurate.
 """
 
     response = client.chat.completions.create(
@@ -609,48 +612,44 @@ if user_input:
     st.rerun()
 
 if st.session_state.reconciliation:
-    st.divider()
-    st.header("📊 Reconciliation Results")
+    with st.expander("📊 Reconciliation Results", expanded=False):
+        reconciliation = st.session_state.reconciliation
+        summary = reconciliation["summary"]
 
-    reconciliation = st.session_state.reconciliation
-    summary = reconciliation["summary"]
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Bank", summary["Bank Transactions"])
+        col2.metric("Ledger", summary["Ledger Transactions"])
+        col3.metric("Matched", summary["Matched"])
+        col4.metric("Unmatched", summary["Bank Unmatched"] + summary["Ledger Unmatched"])
 
-    col1, col2, col3, col4 = st.columns(4)
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "Bank", "Ledger", "Bank Unmatched", "Ledger Unmatched"
+        ])
 
-    col1.metric("Bank Transactions", summary["Bank Transactions"])
-    col2.metric("Ledger Transactions", summary["Ledger Transactions"])
-    col3.metric("Matched", summary["Matched"])
-    col4.metric("Status", summary["Status"])
+        with tab1:
+            st.dataframe(reconciliation["bank"], use_container_width=True, height=300)
 
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "Bank",
-        "Ledger",
-        "Bank Unmatched",
-        "Ledger Unmatched",
-    ])
+        with tab2:
+            st.dataframe(reconciliation["ledger"], use_container_width=True, height=300)
 
-    with tab1:
-        st.dataframe(reconciliation["bank"], use_container_width=True)
+        with tab3:
+            st.dataframe(
+                reconciliation["bank"][reconciliation["bank"]["Status"] == "Unmatched"],
+                use_container_width=True,
+                height=300,
+            )
 
-    with tab2:
-        st.dataframe(reconciliation["ledger"], use_container_width=True)
+        with tab4:
+            st.dataframe(
+                reconciliation["ledger"][reconciliation["ledger"]["Status"] == "Unmatched"],
+                use_container_width=True,
+                height=300,
+            )
 
-    with tab3:
-        st.dataframe(
-            reconciliation["bank"][reconciliation["bank"]["Status"] == "Unmatched"],
+        st.download_button(
+            label="⬇️ Download Reconciliation Report",
+            data=create_excel_report(reconciliation),
+            file_name="Bank_Reconciliation_Report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-
-    with tab4:
-        st.dataframe(
-            reconciliation["ledger"][reconciliation["ledger"]["Status"] == "Unmatched"],
-            use_container_width=True,
-        )
-
-    st.download_button(
-        label="⬇️ Download Reconciliation Report",
-        data=create_excel_report(reconciliation),
-        file_name="Bank_Reconciliation_Report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
