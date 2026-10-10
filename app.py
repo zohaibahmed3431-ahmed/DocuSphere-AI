@@ -8,6 +8,9 @@ import pandas as pd
 
 from openai import OpenAI
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL = "anthropic/claude-3.5-sonnet"
+
 # ---------------- Setup ----------------
 
 st.set_page_config(
