@@ -360,11 +360,14 @@ def build_context(question):
 
 def ask_ai(question):
     try:
-        api_key = st.secrets["OPENAI_API_KEY"]
+        api_key = st.secrets["OPENROUTER_API_KEY"]
     except Exception:
-        return "⚠️ OPENAI_API_KEY Streamlit Secrets mein set nahi hai."
+        return "⚠️ OPENROUTER_API_KEY Streamlit Secrets mein set nahi hai."
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        base_url=OPENROUTER_BASE_URL,
+    )
 
     context = build_context(question)
 
@@ -383,7 +386,7 @@ Rules:
 """
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=OPENROUTER_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": context},
