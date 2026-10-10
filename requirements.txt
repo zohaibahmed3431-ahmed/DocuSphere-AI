@@ -6,5 +6,3 @@ python-dateutil
 openai
 pdfplumber
 python-docx
-Pillow
-pytesseract
