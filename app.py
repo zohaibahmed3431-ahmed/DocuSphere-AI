@@ -254,8 +254,13 @@ def run_reconciliation(bank_df, ledger_df):
         counter += 1
         match_id = f"REC-{counter:04d}"
 
-        bank_df.at[b_idx, ["Status", "Match ID", "Match Rule"]] = ["Matched", match_id, "Exact Reference"]
-        ledger_df.at[l_idx, ["Status", "Match ID", "Match Rule"]] = ["Matched", match_id, "Exact Reference"]
+        bank_df.at[b_idx, "Status"] = "Matched"
+        bank_df.at[b_idx, "Match ID"] = match_id
+        bank_df.at[b_idx, "Match Rule"] = "Exact Amount + Date"
+
+        ledger_df.at[l_idx, "Status"] = "Matched"
+        ledger_df.at[l_idx, "Match ID"] = match_id
+        ledger_df.at[l_idx, "Match Rule"] = "Exact Amount + Date"
 
     for b_idx, bank in bank_df.iterrows():
         if bank_df.at[b_idx, "Status"] == "Matched":
@@ -275,8 +280,13 @@ def run_reconciliation(bank_df, ledger_df):
         counter += 1
         match_id = f"REC-{counter:04d}"
 
-        bank_df.at[b_idx, ["Status", "Match ID", "Match Rule"]] = ["Matched", match_id, "Exact Amount + Date"]
-        ledger_df.at[l_idx, ["Status", "Match ID", "Match Rule"]] = ["Matched", match_id, "Exact Amount + Date"]
+        bank_df.at[b_idx, "Status"] = "Matched"
+        bank_df.at[b_idx, "Match ID"] = match_id
+        bank_df.at[b_idx, "Match Rule"] = "Exact Amount + Date"
+
+        ledger_df.at[l_idx, "Status"] = "Matched"
+        ledger_df.at[l_idx, "Match ID"] = match_id
+        ledger_df.at[l_idx, "Match Rule"] = "Exact Amount + Date"
 
     bank_unmatched = bank_df[bank_df["Status"] == "Unmatched"]
     ledger_unmatched = ledger_df[ledger_df["Status"] == "Unmatched"]
