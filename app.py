@@ -340,26 +340,34 @@ def auto_reconcile_if_possible():
     if st.session_state.reconciliation:
         return st.session_state.reconciliation
 
-    bank_file = next(
-        (f for f in st.session_state.uploaded_files if "Bank" in f["type"]),
-        None,
-    )
-    ledger_file = next(
-        (f for f in st.session_state.uploaded_files if "Ledger" in f["type"]),
-        None,
-    )
-
-    if not bank_file or not ledger_file:
+    if not st.session_state.uploaded_files:
         return None
 
-    bank_sheet_name = list(bank_file["sheets"].keys())[0]
-    ledger_sheet_name = list(ledger_file["sheets"].keys())[0]
+    file_info = st.session_state.uploaded_files[0]
+    sheet_names = list(file_info["sheets"].keys())
 
-    bank_clean = clean_sheet(bank_file["sheets"][bank_sheet_name])
-    ledger_clean = clean_sheet(ledger_file["sheets"][ledger_sheet_name])
+    if len(sheet_names) < 2:
+        return None
 
-    bank_df = standardize(bank_clean, "Bank Statement", bank_sheet_name, bank_file["name"])
-    ledger_df = standardize(ledger_clean, "Company Ledger", ledger_sheet_name, ledger_file["name"])
+    bank_sheet_name = sheet_names[0]
+    ledger_sheet_name = sheet_names[1]
+
+    bank_clean = clean_sheet(file_info["sheets"][bank_sheet_name])
+    ledger_clean = clean_sheet(file_info["sheets"][ledger_sheet_name])
+
+    bank_df = standardize(
+        bank_clean,
+        "Bank Statement",
+        bank_sheet_name,
+        file_info["name"],
+    )
+
+    ledger_df = standardize(
+        ledger_clean,
+        "Company Ledger",
+        ledger_sheet_name,
+        file_info["name"],
+    )
 
     bank_df, ledger_df, summary = run_reconciliation(bank_df, ledger_df)
 
@@ -370,7 +378,6 @@ def auto_reconcile_if_possible():
     }
 
     return st.session_state.reconciliation
-
 
 # ---------------- AI ----------------
 
