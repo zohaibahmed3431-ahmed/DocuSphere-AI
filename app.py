@@ -22,19 +22,50 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        .stApp { background-color: #0F1115; color: #E6E6E6; }
-        .main .block-container { max-width: 900px; padding-top: 2rem; }
-        .stChatMessage { border-radius: 12px; }
+        .stApp {
+            background-color: #0F1115;
+            color: #E6E6E6;
+        }
+        .main .block-container {
+            max-width: 1100px;
+            padding-top: 1.5rem;
+            padding-bottom: 6rem;
+        }
+        h1 {
+            font-size: 1.6rem !important;
+            font-weight: 700;
+        }
+        .stChatInput {
+            max-width: 720px;
+        }
+        div[data-testid="stChatInput"] textarea {
+            min-height: 44px !important;
+            max-height: 44px !important;
+            font-size: 0.95rem;
+        }
         div[data-testid="stFileUploader"] {
             border: 1px dashed #3A3F4B;
-            border-radius: 12px;
-            padding: 10px;
+            border-radius: 10px;
+            padding: 6px;
+            max-width: 720px;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            font-size: 0.9rem;
+            padding: 6px 14px;
+        }
+        .stDataFrame {
+            font-size: 0.85rem;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.3rem;
         }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
