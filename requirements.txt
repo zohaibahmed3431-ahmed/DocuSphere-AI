@@ -1,12 +1,9 @@
 streamlit
 pandas
-numpy
 openpyxl
 xlsxwriter
 python-dateutil
-python-dotenv
 openai
-google-generativeai
 pdfplumber
 python-docx
 Pillow
