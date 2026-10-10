@@ -5,13 +5,12 @@ import json
 
 import streamlit as st
 import pandas as pd
-
 from openai import OpenAI
+
+# ---------------- Config ----------------
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODEL = "anthropic/claude-3.5-sonnet"
-
-# ---------------- Setup ----------------
 
 st.set_page_config(
     page_title="Bank Reconciliation AI",
@@ -22,56 +21,37 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        .stApp {
-            background-color: #0F1115;
-            color: #E6E6E6;
-        }
+        .stApp { background: #0F1115; color: #E6E6E6; }
         .main .block-container {
-            max-width: 1100px;
-            padding-top: 1.5rem;
-            padding-bottom: 6rem;
+            max-width: 820px;
+            padding-top: 3rem;
+            padding-bottom: 8rem;
         }
-        h1 {
-            font-size: 1.6rem !important;
-            font-weight: 700;
+        h1 { font-size: 1.5rem !important; font-weight: 700; }
+        [data-testid="stChatInput"] textarea {
+            min-height: 48px !important;
+            max-height: 48px !important;
         }
-        .stChatInput {
-            max-width: 720px;
-        }
-        div[data-testid="stChatInput"] textarea {
-            min-height: 44px !important;
-            max-height: 44px !important;
-            font-size: 0.95rem;
-        }
-        div[data-testid="stFileUploader"] {
+        [data-testid="stFileUploader"] {
             border: 1px dashed #3A3F4B;
             border-radius: 10px;
-            padding: 6px;
-            max-width: 720px;
+            padding: 4px;
         }
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-        }
-        .stTabs [data-baseweb="tab"] {
-            font-size: 0.9rem;
-            padding: 6px 14px;
-        }
-        .stDataFrame {
-            font-size: 0.85rem;
-        }
-        [data-testid="stMetricValue"] {
-            font-size: 1.3rem;
+        .stDataFrame { font-size: 0.82rem; }
+        [data-testid="stMetricValue"] { font-size: 1.25rem; }
+        [data-testid="stExpander"] {
+            border: 1px solid #262B36 !important;
+            border-radius: 12px !important;
         }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = []
-
 if "reconciliation" not in st.session_state:
     st.session_state.reconciliation = None
 
@@ -93,7 +73,6 @@ def load_any_file(uploaded_file):
 
     if name.endswith(".pdf"):
         import pdfplumber
-
         rows = []
         with pdfplumber.open(io.BytesIO(uploaded_file.getvalue())) as pdf:
             for page in pdf.pages:
@@ -105,32 +84,25 @@ def load_any_file(uploaded_file):
                         parts = line.split()
                         if parts:
                             rows.append(parts)
-
         if not rows:
             raise ValueError("PDF se readable data nahi mila.")
-
         max_cols = max(len(r) for r in rows)
         rows = [r + [""] * (max_cols - len(r)) for r in rows]
         return {"PDF_Data": pd.DataFrame(rows)}
 
     if name.endswith(".docx"):
         from docx import Document
-
         document = Document(io.BytesIO(uploaded_file.getvalue()))
         rows = []
-
         for table in document.tables:
             for row in table.rows:
                 rows.append([cell.text.strip() for cell in row.cells])
-
         if not rows:
             for paragraph in document.paragraphs:
                 if paragraph.text.strip():
                     rows.append([paragraph.text.strip()])
-
         if not rows:
             raise ValueError("Word file se readable data nahi mila.")
-
         return {"Word_Data": pd.DataFrame(rows)}
 
     if name.endswith((".txt", ".md")):
@@ -183,14 +155,12 @@ def extract_reference(text):
 
 def clean_sheet(df):
     df = df.dropna(how="all").reset_index(drop=True)
-
     header_row = 0
     for i in range(min(40, len(df))):
         row_text = " ".join(str(v).lower() for v in df.iloc[i].values)
         if "date" in row_text and ("debit" in row_text or "credit" in row_text or "amount" in row_text):
             header_row = i
             break
-
     df = df.iloc[header_row:]
     df.columns = [str(c).strip() for c in df.iloc[0]]
     df = df.iloc[1:].reset_index(drop=True)
@@ -216,18 +186,15 @@ def standardize(df, source_type, sheet_name, file_name):
         raise ValueError(f"{file_name} -> {sheet_name}: Date ya Description column nahi mila.")
 
     rows = []
-
     for i, row in df.iterrows():
         date = clean_date(row[date_col])
         description = clean_text(row[desc_col])
-
         debit = clean_amount(row[debit_col]) if debit_col else 0.0
         credit = clean_amount(row[credit_col]) if credit_col else 0.0
         amount = clean_amount(row[amount_col]) if amount_col else 0.0
 
         if not date or (debit == 0 and credit == 0 and amount == 0):
             continue
-
         if "opening balance" in description.lower():
             continue
 
@@ -263,94 +230,68 @@ def run_reconciliation(bank_df, ledger_df):
     ledger_df = ledger_df.copy()
     counter = 0
 
-    # Rule 1: Exact Reference + Amount + Direction
+    def set_match(df, idx, status, match_id, rule):
+        df.at[idx, "Status"] = status
+        df.at[idx, "Match ID"] = match_id
+        df.at[idx, "Match Rule"] = rule
+
+    # Rule 1: Exact Reference
     for b_idx, bank in bank_df.iterrows():
         if bank_df.at[b_idx, "Status"] == "Matched":
             continue
-
         ref = str(bank["Reference"]).strip()
         if not ref:
             continue
-
         candidates = ledger_df[
             (ledger_df["Status"] == "Unmatched")
             & (ledger_df["Reference"].astype(str).str.strip() == ref)
             & (ledger_df["Amount"] == bank["Amount"])
             & (ledger_df["Direction"] == bank["Direction"])
         ]
-
         if len(candidates) != 1:
             continue
-
         l_idx = candidates.index[0]
         counter += 1
         match_id = f"REC-{counter:04d}"
+        set_match(bank_df, b_idx, "Matched", match_id, "Exact Reference")
+        set_match(ledger_df, l_idx, "Matched", match_id, "Exact Reference")
 
-        bank_df.at[b_idx, "Status"] = "Matched"
-        bank_df.at[b_idx, "Match ID"] = match_id
-        bank_df.at[b_idx, "Match Rule"] = "Exact Reference"
-
-        ledger_df.at[l_idx, "Status"] = "Matched"
-        ledger_df.at[l_idx, "Match ID"] = match_id
-        ledger_df.at[l_idx, "Match Rule"] = "Exact Reference"
-
-    # Rule 2: Exact Amount + Same Date (sirf unique candidate)
+    # Rule 2: Exact Amount + Same Date (unique candidate only)
     for b_idx, bank in bank_df.iterrows():
         if bank_df.at[b_idx, "Status"] == "Matched":
             continue
-
         candidates = ledger_df[
             (ledger_df["Status"] == "Unmatched")
             & (ledger_df["Amount"] == bank["Amount"])
             & (ledger_df["Direction"] == bank["Direction"])
             & (ledger_df["Date"] == bank["Date"])
         ]
-
         if len(candidates) != 1:
             continue
-
         l_idx = candidates.index[0]
         counter += 1
         match_id = f"REC-{counter:04d}"
+        set_match(bank_df, b_idx, "Matched", match_id, "Exact Amount + Date")
+        set_match(ledger_df, l_idx, "Matched", match_id, "Exact Amount + Date")
 
-        bank_df.at[b_idx, "Status"] = "Matched"
-        bank_df.at[b_idx, "Match ID"] = match_id
-        bank_df.at[b_idx, "Match Rule"] = "Exact Amount + Date"
-
-        ledger_df.at[l_idx, "Status"] = "Matched"
-        ledger_df.at[l_idx, "Match ID"] = match_id
-        ledger_df.at[l_idx, "Match Rule"] = "Exact Amount + Date"
-
-    # Rule 3: Exact Amount + Date Window (3 din) — Suggested Match
+    # Rule 3: Amount + 3-day window (Suggested only)
     for b_idx, bank in bank_df.iterrows():
         if bank_df.at[b_idx, "Status"] == "Matched":
             continue
-
         bank_date = bank["Date"]
-
         candidates = ledger_df[
             (ledger_df["Status"] == "Unmatched")
             & (ledger_df["Amount"] == bank["Amount"])
             & (ledger_df["Direction"] == bank["Direction"])
-            & (ledger_df["Date"].apply(
-                lambda d: abs((d - bank_date).days) <= 3
-            ))
+            & (ledger_df["Date"].apply(lambda d: abs((d - bank_date).days) <= 3))
         ]
-
         if len(candidates) != 1:
             continue
-
         l_idx = candidates.index[0]
         counter += 1
         match_id = f"REC-{counter:04d}"
-
-        bank_df.at[b_idx, "Status"] = "Suggested Match"
-        bank_df.at[b_idx, "Match ID"] = match_id
-        bank_df.at[b_idx, "Match Rule"] = "Amount + Date Window (3 days)"
-
-        ledger_df.at[l_idx, "Status"] = "Suggested Match"
-        ledger_df.at[l_idx, "Match ID"] = match_id
-        ledger_df.at[l_idx, "Match Rule"] = "Amount + Date Window (3 days)"
+        set_match(bank_df, b_idx, "Suggested Match", match_id, "Amount + Date Window")
+        set_match(ledger_df, l_idx, "Suggested Match", match_id, "Amount + Date Window")
 
     bank_unmatched = bank_df[bank_df["Status"] == "Unmatched"]
     ledger_unmatched = ledger_df[ledger_df["Status"] == "Unmatched"]
@@ -367,7 +308,7 @@ def run_reconciliation(bank_df, ledger_df):
     return bank_df, ledger_df, summary
 
 
-def auto_reconcile_if_possible():
+def auto_reconcile():
     if st.session_state.reconciliation:
         return st.session_state.reconciliation
 
@@ -380,25 +321,11 @@ def auto_reconcile_if_possible():
     if len(sheet_names) < 2:
         return None
 
-    bank_sheet_name = sheet_names[0]
-    ledger_sheet_name = sheet_names[1]
+    bank_clean = clean_sheet(file_info["sheets"][sheet_names[0]])
+    ledger_clean = clean_sheet(file_info["sheets"][sheet_names[1]])
 
-    bank_clean = clean_sheet(file_info["sheets"][bank_sheet_name])
-    ledger_clean = clean_sheet(file_info["sheets"][ledger_sheet_name])
-
-    bank_df = standardize(
-        bank_clean,
-        "Bank Statement",
-        bank_sheet_name,
-        file_info["name"],
-    )
-
-    ledger_df = standardize(
-        ledger_clean,
-        "Company Ledger",
-        ledger_sheet_name,
-        file_info["name"],
-    )
+    bank_df = standardize(bank_clean, "Bank Statement", sheet_names[0], file_info["name"])
+    ledger_df = standardize(ledger_clean, "Company Ledger", sheet_names[1], file_info["name"])
 
     bank_df, ledger_df, summary = run_reconciliation(bank_df, ledger_df)
 
@@ -407,38 +334,33 @@ def auto_reconcile_if_possible():
         "ledger": ledger_df,
         "summary": summary,
     }
-
     return st.session_state.reconciliation
+
 
 # ---------------- AI ----------------
 
 def build_context(question):
-    parts = []
-    parts.append("### Uploaded Files")
+    parts = ["### Uploaded Files"]
 
     for file_info in st.session_state.uploaded_files:
         parts.append(f"- {file_info['name']} ({file_info['type']})")
 
     for file_info in st.session_state.uploaded_files:
         for sheet_name, df in file_info["sheets"].items():
-            sample = df.head(50)
             parts.append(f"\n### File: {file_info['name']} | Sheet: {sheet_name}")
-            parts.append(sample.to_csv(index=False))
+            parts.append(df.head(60).to_csv(index=False))
 
-    reconciliation = auto_reconcile_if_possible()
+    reconciliation = auto_reconcile()
 
     if reconciliation:
         parts.append("\n### Reconciliation Summary")
         parts.append(json.dumps(reconciliation["summary"], indent=2, default=str))
-
         parts.append("\n### Bank Transactions Sample")
-        parts.append(reconciliation["bank"].head(50).to_csv(index=False))
-
+        parts.append(reconciliation["bank"].head(60).to_csv(index=False))
         parts.append("\n### Ledger Transactions Sample")
-        parts.append(reconciliation["ledger"].head(50).to_csv(index=False))
+        parts.append(reconciliation["ledger"].head(60).to_csv(index=False))
 
     parts.append(f"\n### User Question\n{question}")
-
     return "\n".join(parts)
 
 
@@ -450,17 +372,16 @@ def ask_ai(question):
 
     client = OpenAI(
         api_key=api_key,
-        base_url=OPENROUTER_BASE_URL,
+        base_url="https://openrouter.ai/api/v1",
     )
-
-    context = build_context(question)
 
     system_prompt = """
 You are a professional Bank Reconciliation AI assistant.
 
 Language rule:
-- Detect the user's language automatically (Urdu, English, Roman Urdu, or mix).
-- Always reply in the SAME language/style the user used.
+- Detect the user's language automatically (Urdu, Roman Urdu, English, or mix).
+- Always reply in the SAME language and style the user used.
+- Understand spelling mistakes and still understand the intent.
 
 Rules:
 1. Answer using the provided file data and reconciliation results.
@@ -476,7 +397,7 @@ Rules:
         model=OPENROUTER_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": context},
+            {"role": "user", "content": build_context(question)},
         ],
         temperature=0.2,
     )
@@ -488,7 +409,6 @@ Rules:
 
 def create_excel_report(reconciliation):
     output = io.BytesIO()
-
     bank_df = reconciliation["bank"]
     ledger_df = reconciliation["ledger"]
     summary = reconciliation["summary"]
@@ -514,21 +434,15 @@ def create_excel_report(reconciliation):
 
 st.markdown(
     """
-    <div style='display:flex; justify-content:space-between; align-items:center;'>
+    <div style='text-align:center; margin-bottom: 24px;'>
         <h1 style='margin:0;'>🏦 Bank Reconciliation AI</h1>
+        <p style='color:#9AA0A6; margin-top:6px;'>
+            Upload a file and ask anything — in Urdu, English, or Roman Urdu.
+        </p>
     </div>
-    <p style='color:#9AA0A6; margin-top:4px;'>
-        Upload any file and ask anything. AI will analyze your data and respond professionally.
-    </p>
     """,
     unsafe_allow_html=True,
 )
-
-if st.button("＋ New Chat"):
-    st.session_state.messages = []
-    st.session_state.uploaded_files = []
-    st.session_state.reconciliation = None
-    st.rerun()
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
@@ -559,7 +473,6 @@ if uploaded_files:
                     for df in sheets.values()
                     for v in df.astype(str).fillna("").values.flatten()[:3000]
                 )
-
                 if "available balance" in text or "stan" in text:
                     file_type = "Bank Statement"
                 elif "general ledger" in text or "doc #" in text:
@@ -573,9 +486,31 @@ if uploaded_files:
                 "sheets": sheets,
             })
 
+            reconciliation = auto_reconcile()
+
+            if reconciliation:
+                summary = reconciliation["summary"]
+                upload_msg = (
+                    f"📄 **{uploaded_file.name}** upload ho gayi.\n\n"
+                    f"**Detected:** {file_type}\n\n"
+                    f"✅ Reconciliation ready:\n\n"
+                    f"- Bank: {summary['Bank Transactions']} transactions\n"
+                    f"- Ledger: {summary['Ledger Transactions']} transactions\n"
+                    f"- Matched: {summary['Matched']}\n"
+                    f"- Bank Unmatched: {summary['Bank Unmatched']}\n"
+                    f"- Ledger Unmatched: {summary['Ledger Unmatched']}\n\n"
+                    "Ab kuch bhi poochein — main file analyze karke jawab dunga."
+                )
+            else:
+                upload_msg = (
+                    f"📄 **{uploaded_file.name}** upload ho gayi.\n\n"
+                    f"**Detected:** {file_type}\n\n"
+                    "Ab kuch bhi poochein."
+                )
+
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": f"📄 **{uploaded_file.name}** upload ho gayi.\n\nDetected: **{file_type}**",
+                "content": upload_msg,
             })
 
             new_added = True
@@ -589,7 +524,7 @@ if uploaded_files:
     if new_added:
         st.rerun()
 
-user_input = st.chat_input("Ask anything about your files...")
+user_input = st.chat_input("Ask anything...")
 
 if user_input:
     st.session_state.messages.append({
@@ -612,7 +547,9 @@ if user_input:
     st.rerun()
 
 if st.session_state.reconciliation:
-    with st.expander("📊 Reconciliation Results", expanded=False):
+    st.divider()
+
+    with st.expander("📊 View Reconciliation Results & Download Report"):
         reconciliation = st.session_state.reconciliation
         summary = reconciliation["summary"]
 
@@ -627,23 +564,23 @@ if st.session_state.reconciliation:
         ])
 
         with tab1:
-            st.dataframe(reconciliation["bank"], use_container_width=True, height=300)
+            st.dataframe(reconciliation["bank"], use_container_width=True, height=280)
 
         with tab2:
-            st.dataframe(reconciliation["ledger"], use_container_width=True, height=300)
+            st.dataframe(reconciliation["ledger"], use_container_width=True, height=280)
 
         with tab3:
             st.dataframe(
                 reconciliation["bank"][reconciliation["bank"]["Status"] == "Unmatched"],
                 use_container_width=True,
-                height=300,
+                height=280,
             )
 
         with tab4:
             st.dataframe(
                 reconciliation["ledger"][reconciliation["ledger"]["Status"] == "Unmatched"],
                 use_container_width=True,
-                height=300,
+                height=280,
             )
 
         st.download_button(
