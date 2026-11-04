@@ -1,6 +1,6 @@
 import os
 
-APP_NAME = "DocuSphere AI — Enterprise Intelligence Engine"
+APP_NAME = "DocuSphere AI — Enterprise Financial Engine"
 SUPPORTED_FILE_TYPES = ["xlsx", "xls", "csv"]
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
