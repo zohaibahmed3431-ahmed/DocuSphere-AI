@@ -14,20 +14,21 @@ from core.powerbi_engine import generate_powerbi_dashboard
 from core.exporter import export_reconciliation_report
 from ai.assistant import query_openrouter_ai
 
-# Professional Enterprise Theme Styling
 st.set_page_config(
-    page_title="DocuSphere AI — Financial Intelligence Workspace",
+    page_title="DocuSphere AI — Financial Workspace",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
+# Hide Sidebar & Apply Modern CSS
 st.markdown("""
 <style>
-    .main { background-color: #0b0e14; color: #e0e6ed; }
-    .stMetric { background-color: #161b22; padding: 15px; border-radius: 8px; border: 1px solid #30363d; }
+    [data-testid="stSidebar"] { display: none; }
+    .main { background-color: #0d1117; color: #c9d1d9; }
     .stButton>button { background-color: #238636; color: white; border-radius: 6px; font-weight: 600; border: none; }
     .stButton>button:hover { background-color: #2ea043; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,30 +37,26 @@ if "messages" not in st.session_state:
 if "reconciliation_result" not in st.session_state:
     st.session_state.reconciliation_result = None
 
-with st.sidebar:
-    st.title("⚡ DocuSphere AI")
-    st.caption("Enterprise Financial & Audit Agent")
-    
-    if st.button("＋ Reset / New Session", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.reconciliation_result = None
-        st.rerun()
-        
-    st.divider()
-    openrouter_key = st.text_input("OpenRouter API Key", type="password", key="user_api_key")
+# Top Configuration Header
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.title("⚡ DocuSphere AI — Financial Intelligence")
+    st.caption("Automated Multi-Entity Bank Reconciliation, Audit Analytics & Power BI Dashboarding")
+with col2:
+    openrouter_key = st.text_input("OpenRouter API Key", type="password", key="user_api_key", placeholder="sk-or-v1-...")
     if not openrouter_key:
         openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
-        
-    st.divider()
-    st.subheader("📁 Data Ingestion Pipeline")
-    uploaded_files = st.file_uploader(
-        "Upload Financial Datasets / Ledgers",
-        type=["xlsx", "xls", "csv"],
-        accept_multiple_files=True
-    )
 
-st.title("DocuSphere AI — Financial Intelligence Platform")
-st.caption("Automated Multi-Entity Reconciliation, AI Auditing, & Power BI Visual Analytics")
+st.divider()
+
+# Direct Main Area File Upload
+uploaded_files = st.file_uploader(
+    "📥 Drag and drop your Financial Statements / Company Ledgers here (CSV, XLSX, XLS)",
+    type=["xlsx", "xls", "csv"],
+    accept_multiple_files=True
+)
+
+st.divider()
 
 chat_container = st.container()
 with chat_container:
@@ -67,7 +64,7 @@ with chat_container:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-user_input = st.chat_input("Type your question, request analytics, or type 'reconcile'...")
+user_input = st.chat_input("Type your command (e.g. 'reconcile', 'show charts', or ask any accounting query)...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -75,7 +72,7 @@ if user_input:
     
     if "reconcile" in cmd or "reconciliation" in cmd:
         if not uploaded_files:
-            reply = "⚠️ **Execution Error**: Please upload both a Bank Statement and a Company Ledger in the sidebar to execute reconciliation."
+            reply = "⚠️ **Execution Error**: Please upload both Bank Statement and Company Ledger files above to run reconciliation."
         else:
             try:
                 with st.spinner("Executing Deterministic Matching Engine..."):
@@ -88,14 +85,14 @@ if user_input:
                     }
                     reply = f"""### ✅ Reconciliation Execution Completed
 
-| Metric | Recorded Value |
+| Audit Metric | Recorded Value |
 |---|---:|
-| **Bank Transactions Processed** | `{summary['Bank Transactions']:,}` |
-| **Ledger Transactions Processed** | `{summary['Ledger Transactions']:,}` |
-| **Matched Pairs Identified** | `{summary['Matched Pairs']:,}` |
-| **Unmatched Bank Items** | `{summary['Bank Unmatched']:,}` |
-| **Unmatched Ledger Items** | `{summary['Ledger Unmatched']:,}` |
-| **Audit Status** | **{summary['Reconciliation Status']}** |
+| **Bank Transactions Processed** | `{summary.get('Bank Transactions', 0):,}` |
+| **Ledger Transactions Processed** | `{summary.get('Ledger Transactions', 0):,}` |
+| **Matched Pairs Identified** | `{summary.get('Matched Pairs', 0):,}` |
+| **Unmatched Bank Items** | `{summary.get('Bank Unmatched', 0):,}` |
+| **Unmatched Ledger Items** | `{summary.get('Ledger Unmatched', 0):,}` |
+| **Audit Status** | **{summary.get('Reconciliation Status', 'Needs Review')}** |
 """
             except Exception as e:
                 reply = f"❌ **Reconciliation Engine Error**: {str(e)}"
@@ -104,7 +101,7 @@ if user_input:
             try:
                 df_sample = pd.read_csv(uploaded_files[0]) if uploaded_files[0].name.endswith('.csv') else pd.read_excel(uploaded_files[0])
                 kpis, charts = generate_powerbi_dashboard(df_sample)
-                reply = "### 📊 Financial Dashboard Summary Generated\n\n"
+                reply = "### 📊 Visual Analytics Dashboard Generated\n\n"
                 for k, v in kpis.items():
                     reply += f"- **{k}:** `{v}`\n"
                 st.session_state["active_charts"] = charts
@@ -123,7 +120,7 @@ if user_input:
 
 if "active_charts" in st.session_state and st.session_state["active_charts"]:
     st.divider()
-    st.subheader("📈 Power BI Visual Dashboard")
+    st.subheader("📈 Power BI Analytics Dashboard")
     cols = st.columns(len(st.session_state["active_charts"]))
     for i, (name, fig) in enumerate(st.session_state["active_charts"].items()):
         with cols[i % len(cols)]:
@@ -131,7 +128,7 @@ if "active_charts" in st.session_state and st.session_state["active_charts"]:
 
 if st.session_state.reconciliation_result:
     st.divider()
-    st.subheader("📊 Reconciliation Workspace & Audit Ledger")
+    st.subheader("📊 Complete Audit Workspace & Results")
     res = st.session_state.reconciliation_result
     
     t1, t2, t3, t4 = st.tabs(["Matched Pairs (REC-000001)", "Unmatched Bank Items", "Unmatched Ledger Items", "Summary Metrics"])
@@ -146,9 +143,9 @@ if st.session_state.reconciliation_result:
         
     excel_report = export_reconciliation_report(res["bank"], res["ledger"], res["matched"], res["summary"])
     st.download_button(
-        label="⬇️ Download Complete Audit Excel Report",
+        label="⬇️ Download Complete Multi-Sheet Financial Audit Report (XLSX)",
         data=excel_report,
-        file_name="DocuSphere_Financial_Reconciliation_Report.xlsx",
+        file_name="DocuSphere_Full_Reconciliation_Report.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
