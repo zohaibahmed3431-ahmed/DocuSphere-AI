@@ -1,24 +1,12 @@
 def detect_document_type(sheets):
     text = ""
-
-    for dataframe in sheets.values():
+    for df in sheets.values():
         text += " ".join(
-            str(value).lower()
-            for value in dataframe.astype(str).fillna("").values.flatten()[:5000]
-        )
-
-    if (
-        "available balance" in text
-        or "bank statement" in text
-        or "stan" in text
-    ):
+            df.astype(str).fillna("").values.flatten()[:4000]
+        ).lower()
+        
+    if any(k in text for k in ["available balance", "bank statement", "stan", "withdrawal", "deposit"]):
         return "Bank Statement"
-
-    if (
-        "general ledger" in text
-        or "doc #" in text
-        or "voucher" in text
-    ):
+    if any(k in text for k in ["general ledger", "doc #", "voucher", "journal", "debit", "credit"]):
         return "Company Ledger"
-
-    return "Unknown"
+    return "General Financial Data"
