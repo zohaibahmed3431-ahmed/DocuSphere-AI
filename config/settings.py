@@ -1,17 +1,7 @@
-APP_NAME = "Bank Reconciliation AI"
+import os
 
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
+APP_NAME = "DocuSphere AI — Enterprise Intelligence Engine"
+SUPPORTED_FILE_TYPES = ["xlsx", "xls", "csv"]
 
-MAX_FILE_SIZE_MB = 200
-
-SUPPORTED_TYPES = [
-    "xlsx", "xls", "csv",
-    "pdf", "docx", "txt", "md",
-    "png", "jpg", "jpeg", "tiff",
-]
-
-DEFAULT_DATE_TOLERANCE_DAYS = 0
-
-OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
-GEMINI_DEFAULT_MODEL = "gemini-1.5-flash"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini"
