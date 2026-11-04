@@ -1,8 +1,9 @@
-streamlit
-pandas
-openpyxl
-xlsxwriter
-python-dateutil
-openai
-pdfplumber
-python-docx
+streamlit>=1.30.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.18.0
+openpyxl>=3.1.2
+xlsxwriter>=3.1.0
+python-dateutil>=2.8.2
+python-dotenv>=1.0.0
+openai>=1.0.0
