@@ -30,6 +30,12 @@ def clean_text(value):
         return ""
     return str(value).strip()
 
+def get_file_extension(file_name):
+    """File name se extension extract karta hai."""
+    if not file_name:
+        return ""
+    return file_name.split(".")[-1].lower() if "." in file_name else ""
+
 def extract_identifiers(text):
     if pd.isna(text):
         return set()
